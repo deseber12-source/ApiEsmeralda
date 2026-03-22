@@ -1,11 +1,13 @@
 from flask import Flask
 from flask_cors import CORS
+from flask_migrate import Migrate
 from config import Config
-from models import db, Cliente  # Importamos Cliente aquí
+from models import db, Cliente, Contacto, Reserva, Cotizacion, Post # Importamos el modelo Post
 from routes.contacto import contacto_bp
 from routes.reserva import reserva_bp
 from routes.cotizacion import cotizacion_bp
 from routes.admin import admin_bp
+from routes.blog import blog_bp
 import os
 
 
@@ -16,6 +18,7 @@ def create_app():
     # Inicializar extensiones
     db.init_app(app)
     CORS(app)  # En producción, restringir orígenes
+    migrate = Migrate(app, db)
 
     # Registrar blueprints
     app.register_blueprint(contacto_bp, url_prefix='/api')
@@ -23,20 +26,13 @@ def create_app():
     app.register_blueprint(cotizacion_bp, url_prefix='/api')
 
     app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(blog_bp, url_prefix='/api')
 
-    # Crear tablas y datos de prueba (solo en desarrollo)
-    with app.app_context():
-        db.create_all()
-        # Cliente de ejemplo (solo en desarrollo)
-        if os.environ.get("FLASK_ENV") == "development":
-            if not Cliente.query.filter_by(cliente_id='taller-aguila').first():
-                test = Cliente(
-                    cliente_id='taller-aguila',
-                    nombre_negocio='Taller El Águila',
-                    email_notificacion='eduardo.palencia@cobrabien.org'  # Cámbialo para pruebas
-                )
-                db.session.add(test)
-                db.session.commit()
+    # ⚠️ IMPORTANTE:
+    # Ya NO usamos db.create_all().
+    # Todas las tablas se manejarán con migraciones:
+    # flask db migrate
+    # flask db upgrade
 
     return app
 

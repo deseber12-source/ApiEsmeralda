@@ -11,3 +11,4 @@ python-http-client==3.3.7
 gunicorn==21.2.0
 Flask-HTTPAuth==4.8.0
 email-validator==2.1.1
+Flaks_Migrate

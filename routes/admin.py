@@ -179,3 +179,75 @@ def marcar_cotizacion_leido(id):
     mensaje.leido = True
     db.session.commit()
     return jsonify({'mensaje': 'Marcado como leído'})
+
+
+# ------------------ Gestión de posts ------------------
+@admin_bp.route('/posts', methods=['GET'])
+@auth.login_required
+def listar_posts_admin():
+    posts = Post.query.order_by(Post.fecha_publicacion.desc()).all()
+    return jsonify([p.to_dict() for p in posts])
+
+@admin_bp.route('/posts', methods=['POST'])
+@auth.login_required
+def crear_post():
+    data = request.get_json()
+    required = ['titulo', 'slug', 'resumen', 'contenido']
+    if not all(k in data for k in required):
+        return jsonify({'error': 'Faltan campos requeridos'}), 400
+    
+    # Verificar slug único
+    if Post.query.filter_by(slug=data['slug']).first():
+        return jsonify({'error': 'El slug ya existe'}), 409
+    
+    nuevo = Post(
+        titulo=data['titulo'],
+        slug=data['slug'],
+        resumen=data['resumen'],
+        contenido=data['contenido'],
+        imagen_destacada=data.get('imagen_destacada'),
+        autor=data.get('autor', 'Ismael Palencia'),
+        publicado=data.get('publicado', True),
+        cliente_id=data.get('cliente_id')  # opcional
+    )
+    db.session.add(nuevo)
+    db.session.commit()
+    return jsonify({'mensaje': 'Post creado', 'post': nuevo.to_dict()}), 201
+
+@admin_bp.route('/posts/<int:id>', methods=['PUT'])
+@auth.login_required
+def actualizar_post(id):
+    post = Post.query.get_or_404(id)
+    data = request.get_json()
+    
+    if 'titulo' in data:
+        post.titulo = data['titulo']
+    if 'slug' in data:
+        # Verificar que el nuevo slug no exista en otro post
+        existente = Post.query.filter(Post.slug == data['slug'], Post.id != id).first()
+        if existente:
+            return jsonify({'error': 'El slug ya existe'}), 409
+        post.slug = data['slug']
+    if 'resumen' in data:
+        post.resumen = data['resumen']
+    if 'contenido' in data:
+        post.contenido = data['contenido']
+    if 'imagen_destacada' in data:
+        post.imagen_destacada = data['imagen_destacada']
+    if 'autor' in data:
+        post.autor = data['autor']
+    if 'publicado' in data:
+        post.publicado = data['publicado']
+    if 'cliente_id' in data:
+        post.cliente_id = data['cliente_id']
+    
+    db.session.commit()
+    return jsonify({'mensaje': 'Post actualizado', 'post': post.to_dict()})
+
+@admin_bp.route('/posts/<int:id>', methods=['DELETE'])
+@auth.login_required
+def eliminar_post(id):
+    post = Post.query.get_or_404(id)
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify({'mensaje': 'Post eliminado'})
