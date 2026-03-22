@@ -199,6 +199,7 @@ def create_app():
             <li><code>PUT /admin/posts/&lt;id&gt;</code> – Actualizar post</li>
             <li><code>DELETE /admin/posts/&lt;id&gt;</code> – Eliminar post</li>
             <li><a href="/admin/posts/panel">📝 Panel de blog (interfaz web)</a></li>
+            <li><a href="/admin/clientes/panel">👥 Panel de clientes (interfaz web)</a></li>
         </ul>
 
         <h2>📖 Blog</h2>
