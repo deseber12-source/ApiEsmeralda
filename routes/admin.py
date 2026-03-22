@@ -4,6 +4,353 @@ from flask import render_template_string
 from models import db, Cliente, Contacto, Reserva, Cotizacion, Post
 from datetime import datetime
 
+CLIENTES_PANEL_HTML = '''
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Clientes - Esmeralda</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #f5f5f5;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #c5a572;
+            margin-bottom: 2rem;
+        }
+        h2 {
+            color: #c5a572;
+            margin: 2rem 0 1rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 0.5rem;
+            background: #2e2e2e;
+            border: 1px solid #c5a572;
+            color: #fff;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        button {
+            background: #c5a572;
+            color: #0a0a0a;
+            border: none;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #d4af37;
+        }
+        .client-list {
+            margin-top: 2rem;
+        }
+        .client-item {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .client-info {
+            flex: 1;
+        }
+        .client-info h3 {
+            margin-bottom: 0.2rem;
+        }
+        .client-info p {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin: 0.2rem 0;
+        }
+        .client-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .btn-edit, .btn-delete {
+            padding: 0.3rem 0.8rem;
+            font-size: 0.8rem;
+        }
+        .btn-delete {
+            background: #b91c1c;
+        }
+        .btn-delete:hover {
+            background: #991b1b;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 0.5rem;
+        }
+        .success {
+            color: #2ecc71;
+            margin-top: 0.5rem;
+        }
+        hr {
+            margin: 2rem 0;
+            border-color: #333;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #aaa;
+        }
+        .config-help {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-top: 0.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👥 Gestión de Clientes | Esmeralda</h1>
+
+        <!-- Formulario para crear/editar cliente -->
+        <div id="form-container">
+            <h2 id="form-title">Crear nuevo cliente</h2>
+            <form id="client-form">
+                <input type="hidden" id="client-id" name="id">
+                <div class="form-group">
+                    <label for="cliente_id">ID del cliente (único) *</label>
+                    <input type="text" id="cliente_id" name="cliente_id" required placeholder="ej: taller-aguila">
+                    <div class="config-help">Se usará en los formularios de las páginas web.</div>
+                </div>
+                <div class="form-group">
+                    <label for="nombre_negocio">Nombre del negocio *</label>
+                    <input type="text" id="nombre_negocio" name="nombre_negocio" required>
+                </div>
+                <div class="form-group">
+                    <label for="email_notificacion">Correo para notificaciones *</label>
+                    <input type="email" id="email_notificacion" name="email_notificacion" required>
+                </div>
+                <div class="form-group">
+                    <label for="telefono">Teléfono</label>
+                    <input type="text" id="telefono" name="telefono">
+                </div>
+                <div class="form-group">
+                    <label for="direccion">Dirección</label>
+                    <input type="text" id="direccion" name="direccion">
+                </div>
+                <div class="form-group">
+                    <label for="configuracion">Configuración (JSON opcional)</label>
+                    <textarea id="configuracion" name="configuracion" rows="3" placeholder='{"enviar_acuse": true, "tema": "oscuro"}'></textarea>
+                    <div class="config-help">Objeto JSON con configuraciones adicionales. Dejar vacío para usar valores por defecto.</div>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="activo" name="activo" checked> Activo
+                    </label>
+                </div>
+                <button type="submit" id="submit-btn">Crear cliente</button>
+                <button type="button" id="cancel-btn" style="display:none;">Cancelar</button>
+            </form>
+            <div id="form-message"></div>
+        </div>
+
+        <hr>
+
+        <h2>Clientes registrados</h2>
+        <div id="clients-list" class="client-list">
+            <div class="loading">Cargando clientes...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/admin';
+        let editingId = null;
+
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                },
+                credentials: 'same-origin'
+            });
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.error || 'Error en la petición');
+            }
+            return response.json();
+        }
+
+        async function loadClients() {
+            const container = document.getElementById('clients-list');
+            container.innerHTML = '<div class="loading">Cargando clientes...</div>';
+            try {
+                const data = await apiFetch(`${API_BASE}/clientes`);
+                if (!data.length) {
+                    container.innerHTML = '<p>No hay clientes registrados. ¡Crea el primero!</p>';
+                    return;
+                }
+                let html = '';
+                data.forEach(client => {
+                    html += `
+                        <div class="client-item" data-id="${client.cliente_id}">
+                            <div class="client-info">
+                                <h3>${escapeHtml(client.nombre_negocio)} <span style="color: #c5a572;">(${escapeHtml(client.cliente_id)})</span></h3>
+                                <p>📧 ${escapeHtml(client.email_notificacion)}</p>
+                                ${client.telefono ? `<p>📞 ${escapeHtml(client.telefono)}</p>` : ''}
+                                ${client.direccion ? `<p>📍 ${escapeHtml(client.direccion)}</p>` : ''}
+                                <p>✅ Estado: ${client.activo ? 'Activo' : 'Inactivo'} | 🗓️ Creado: ${new Date(client.created_at).toLocaleString()}</p>
+                            </div>
+                            <div class="client-actions">
+                                <button class="btn-edit" onclick="editClient('${client.cliente_id}')">Editar</button>
+                                <button class="btn-delete" onclick="deleteClient('${client.cliente_id}')">Eliminar</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = `<p class="error">Error cargando clientes: ${error.message}</p>`;
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        async function saveClient(event) {
+            event.preventDefault();
+            const form = document.getElementById('client-form');
+            const formData = new FormData(form);
+            
+            let configuracion = formData.get('configuracion');
+            if (configuracion && configuracion.trim()) {
+                try {
+                    configuracion = JSON.parse(configuracion);
+                } catch(e) {
+                    document.getElementById('form-message').innerHTML = '<div class="error">❌ Configuración JSON inválida</div>';
+                    return;
+                }
+            } else {
+                configuracion = {};
+            }
+            
+            const data = {
+                cliente_id: formData.get('cliente_id'),
+                nombre_negocio: formData.get('nombre_negocio'),
+                email_notificacion: formData.get('email_notificacion'),
+                telefono: formData.get('telefono') || null,
+                direccion: formData.get('direccion') || null,
+                configuracion: configuracion,
+                activo: formData.get('activo') === 'on'
+            };
+            
+            const messageDiv = document.getElementById('form-message');
+            messageDiv.innerHTML = '<div class="loading">Guardando...</div>';
+            try {
+                let result;
+                if (editingId) {
+                    result = await apiFetch(`${API_BASE}/clientes/${editingId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    result = await apiFetch(`${API_BASE}/clientes`, {
+                        method: 'POST',
+                        body: JSON.stringify(data)
+                    });
+                }
+                messageDiv.innerHTML = `<div class="success">✅ ${result.mensaje}</div>`;
+                resetForm();
+                loadClients();
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function editClient(cliente_id) {
+            try {
+                const data = await apiFetch(`${API_BASE}/clientes`);
+                const client = data.find(c => c.cliente_id === cliente_id);
+                if (!client) throw new Error('Cliente no encontrado');
+                editingId = client.cliente_id;
+                document.getElementById('client-id').value = client.id;
+                document.getElementById('cliente_id').value = client.cliente_id;
+                document.getElementById('nombre_negocio').value = client.nombre_negocio;
+                document.getElementById('email_notificacion').value = client.email_notificacion;
+                document.getElementById('telefono').value = client.telefono || '';
+                document.getElementById('direccion').value = client.direccion || '';
+                document.getElementById('configuracion').value = JSON.stringify(client.configuracion || {}, null, 2);
+                document.getElementById('activo').checked = client.activo;
+                document.getElementById('form-title').innerText = 'Editar cliente';
+                document.getElementById('submit-btn').innerText = 'Actualizar';
+                document.getElementById('cancel-btn').style.display = 'inline-block';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (error) {
+                alert('Error al cargar el cliente: ' + error.message);
+            }
+        }
+
+        async function deleteClient(cliente_id) {
+            if (!confirm(`¿Eliminar el cliente "${cliente_id}" permanentemente?\nEsto también eliminará todos sus mensajes.`)) return;
+            try {
+                await apiFetch(`${API_BASE}/clientes/${cliente_id}`, { method: 'DELETE' });
+                alert('Cliente eliminado');
+                if (editingId === cliente_id) resetForm();
+                loadClients();
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function resetForm() {
+            editingId = null;
+            document.getElementById('client-form').reset();
+            document.getElementById('client-id').value = '';
+            document.getElementById('activo').checked = true;
+            document.getElementById('form-title').innerText = 'Crear nuevo cliente';
+            document.getElementById('submit-btn').innerText = 'Crear cliente';
+            document.getElementById('cancel-btn').style.display = 'none';
+            document.getElementById('form-message').innerHTML = '';
+        }
+
+        document.getElementById('client-form').addEventListener('submit', saveClient);
+        document.getElementById('cancel-btn').addEventListener('click', resetForm);
+
+        loadClients();
+    </script>
+</body>
+</html>
+'''
+
+
 ADMIN_PANEL_HTML = '''
 <!DOCTYPE html>
 <html lang="es">
@@ -600,3 +947,9 @@ def eliminar_post(id):
 def posts_panel():
     """Panel de administración para gestionar posts del blog."""
     return render_template_string(ADMIN_PANEL_HTML)
+
+@admin_bp.route('/clientes/panel', methods=['GET'])
+@auth.login_required
+def clientes_panel():
+    """Panel de administración para gestionar clientes."""
+    return render_template_string(CLIENTES_PANEL_HTML)
