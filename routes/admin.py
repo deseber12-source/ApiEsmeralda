@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_httpauth import HTTPBasicAuth
+from flask import render_template_string
 from models import db, Cliente, Contacto, Reserva, Cotizacion
 from datetime import datetime
 
